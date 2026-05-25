@@ -1,6 +1,6 @@
 // ============================================
-// UPDATED server.js WITH ROLE-BASED PERMISSIONS
-// Task assignment only for: CEO, Admin, Saloni, Anurag
+// UPDATED server.js WITH EMAIL-BASED PERMISSIONS
+// Task assignment only for: CEO + Special Emails
 // ============================================
 
 import express from 'express';
@@ -8,8 +8,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
-import jwt from 'jsonwebtoken';
-import bcryptjs from 'bcryptjs';
 
 dotenv.config();
 
@@ -18,10 +16,8 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ extended: true }));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb' }));
+app.use(express.json({ limit: '50mb', extended: true }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Supabase Clients
 const supabase = createClient(
@@ -39,11 +35,12 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // ============================================
-// SPECIAL USERS - CAN ASSIGN TASKS
+// SPECIAL USERS - CAN ASSIGN TASKS (EMAIL-BASED)
 // ============================================
 const TASK_ASSIGNERS = [
-  'saloni@onenesxus.com',  // Saloni Jain
-  'anurag@onenesxus.com',  // Anurag Kumar
+  'saloniphotography911@gmail.com',  // Saloni
+  'ak909412@gmail.com',               // Anurag
+  'vikaskumar8800.vk@gmail.com',      // CEO Vikas
 ];
 
 // Helper function to check if user can assign tasks
@@ -59,7 +56,7 @@ const canAssignTasks = async (userId) => {
   // CEO and Admin can always assign
   if (user.role === 'ceo' || user.role === 'admin') return true;
 
-  // Only Saloni and Anurag (employees) can assign
+  // Only special emails (employees) can assign
   if (user.role === 'employee' && TASK_ASSIGNERS.includes(user.email)) {
     return true;
   }
@@ -181,11 +178,11 @@ app.get('/api/auth/permissions/:userId', async (req, res) => {
       role: user.role,
       email: user.email,
       permissions: {
-        canCreateTasks: true, // All can create tasks for themselves
-        canAssignTasks: canAssign, // Only CEO, Admin, Saloni, Anurag
+        canCreateTasks: true,
+        canAssignTasks: canAssign,
         canVerifyTasks: user.role === 'ceo' || user.role === 'admin',
         canAccessAdmin: user.role === 'admin',
-        canUploadProof: true, // All can upload proof
+        canUploadProof: true,
       }
     });
   } catch (err) {
@@ -258,7 +255,7 @@ app.put('/api/admin/users/:userId/points', async (req, res) => {
   try {
     const adminId = req.headers['x-user-id'];
     const { userId } = req.params;
-    const { points, reason } = req.body;
+    const { points } = req.body;
 
     const { data: adminUser } = await supabase
       .from('users')
@@ -331,7 +328,7 @@ app.get('/api/admin/stats', async (req, res) => {
 
 app.post('/api/tasks', async (req, res) => {
   try {
-    const { title, description, assigned_to, priority, category, expected_completion_date } = req.body;
+    const { title, description, assigned_to, assigned_by, priority, category, expected_completion_date } = req.body;
     const userId = req.headers['x-user-id'];
 
     if (!userId) {
@@ -343,7 +340,7 @@ app.post('/api/tasks', async (req, res) => {
       const canAssign = await canAssignTasks(userId);
       if (!canAssign) {
         return res.status(403).json({ 
-          error: 'You do not have permission to assign tasks. Only CEO, Admin, Saloni Jain, and Anurag Kumar can assign tasks.' 
+          error: 'You do not have permission to assign tasks. Only CEO and special users can assign tasks.' 
         });
       }
     }
@@ -356,7 +353,7 @@ app.post('/api/tasks', async (req, res) => {
           description,
           created_by: userId,
           assigned_to: assigned_to || null,
-          assigned_by: assigned_to ? userId : null,
+          assigned_by: assigned_by || userId,
           priority: priority || 'medium',
           category: category || null,
           expected_completion_date: expected_completion_date || null,
@@ -377,7 +374,7 @@ app.post('/api/tasks', async (req, res) => {
 app.get('/api/tasks', async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
-    const { status, employee_id } = req.query;
+    const { status } = req.query;
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -401,17 +398,15 @@ app.get('/api/tasks', async (req, res) => {
       .eq('id', userId)
       .single();
 
-    // Admin sees all, others see their own
+    // Admin sees all
+    // CEO sees all
+    // Others see: created by them OR assigned to them OR assigned by them
     if (userRole?.role !== 'admin' && userRole?.role !== 'ceo') {
-      query = query.or(`created_by.eq.${userId},assigned_to.eq.${userId}`);
+      query = query.or(`created_by.eq.${userId},assigned_to.eq.${userId},assigned_by.eq.${userId}`);
     }
 
     if (status) {
       query = query.eq('status', status);
-    }
-
-    if (employee_id) {
-      query = query.eq('created_by', employee_id);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -589,7 +584,7 @@ app.put('/api/tasks/:id/verify', async (req, res) => {
 
 app.post('/api/proofs/upload', upload.array('proofs', 5), async (req, res) => {
   try {
-    const { task_id, proof_type } = req.body;
+    const { task_id } = req.body;
     const userId = req.headers['x-user-id'];
 
     if (!req.files || req.files.length === 0) {
