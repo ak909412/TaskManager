@@ -505,34 +505,15 @@ app.put('/api/tasks/:id/verify', async (req, res) => {
     const userId = req.headers['x-user-id'];
     const { base_points, approved } = req.body;
 
-    // Get task details
-    const { data: task } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (!task) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
-
-    // Check if user can verify
-    // Can verify if: CEO, Admin, or the person in assigned_by field
+    // Check if user can verify (CEO or Admin)
     const { data: user } = await supabase
       .from('users')
       .select('role')
       .eq('id', userId)
       .single();
 
-    const canVerify = 
-      user?.role === 'ceo' || 
-      user?.role === 'admin' || 
-      task.assigned_by === userId;
-
-    if (!canVerify) {
-      return res.status(403).json({ 
-        error: 'Only the person who assigned this task (or CEO/Admin) can verify it' 
-      });
+    if (user?.role !== 'ceo' && user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Only CEO and Admin can verify tasks' });
     }
 
     if (!approved) {
