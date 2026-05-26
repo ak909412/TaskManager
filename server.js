@@ -336,7 +336,7 @@ app.put('/api/tasks/:id/complete', async (req, res) => {
       .from('tasks')
       .update({ status: 'pending_verification' })
       .eq('id', id)
-      .eq('created_by', userId)
+      .or(`created_by.eq.${userId},assigned_to.eq.${userId}`)
       .select();
 
     if (error) throw error;
