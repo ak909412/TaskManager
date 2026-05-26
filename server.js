@@ -323,16 +323,17 @@ app.put('/api/tasks/:id/complete', async (req, res) => {
     const { id } = req.params;
     const userId = req.headers['x-user-id'];
 
+    // Allow either creator OR assigned_to person to mark complete
     const { data, error } = await supabase
       .from('tasks')
       .update({ status: 'pending_verification' })
       .eq('id', id)
-      .eq('created_by', userId)
+      .or(`created_by.eq.${userId},assigned_to.eq.${userId}`)
       .select();
 
     if (error) throw error;
     if (!data || data.length === 0) {
-      return res.status(403).json({ error: 'Cannot complete this task' });
+      return res.status(403).json({ error: 'Only task creator or assignee can mark complete' });
     }
 
     res.json({ task: data[0] });
