@@ -65,17 +65,29 @@ app.post('/api/auth/register', async (req, res) => {
     const { email, password, name, role } = req.body;
 
     // Only one CEO allowed
-    if (role === 'ceo') {
-      const { data: existing } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('role', 'ceo')
-        .single();
+    // if (role === 'ceo') {
+    //   const { data: existing } = await supabaseAdmin
+    //     .from('users')
+    //     .select('id')
+    //     .eq('role', 'ceo')
+    //     .single();
 
-      if (existing) {
-        return res.status(400).json({ error: 'CEO already exists' });
-      }
-    }
+    //   if (existing) {
+    //     return res.status(400).json({ error: 'CEO already exists' });
+    //   }
+    // }
+
+    // Allow up to 5 CEOs
+if (role === 'ceo') {
+  const { data: existing, error } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('role', 'ceo');
+
+  if (existing && existing.length >= 3) {
+    return res.status(400).json({ error: 'Maximum 5 CEOs allowed' });
+  }
+}
 
     // Create auth user
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
