@@ -300,6 +300,12 @@ app.put('/api/tasks/:id/progress', async (req, res) => {
     const { id } = req.params;
     const { completion_percentage, notes } = req.body;
 
+    // Auto-update task status to in_progress
+    await supabase
+      .from('tasks')
+      .update({ status: 'in_progress' })
+      .eq('id', id);
+
     const { data, error } = await supabase
       .from('task_updates')
       .insert([{
@@ -311,7 +317,7 @@ app.put('/api/tasks/:id/progress', async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ update: data[0] });
+    res.json({ update: data[0], message: 'Progress updated - task now in progress' });
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: err.message });
