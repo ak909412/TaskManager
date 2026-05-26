@@ -199,11 +199,41 @@ app.get('/api/tasks', async (req, res) => {
       query = query.or(`created_by.eq.${userId},assigned_to.eq.${userId},assigned_by.eq.${userId}`);
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data: tasks, error } = await query.order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    res.json({ tasks: data || [] });
+    // Fetch user details for each task
+    const tasksWithUsers = await Promise.all((tasks || []).map(async (task) => {
+      let createdByUser = null;
+      let assignedByUser = null;
+
+      if (task.created_by) {
+        const { data: u } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .eq('id', task.created_by)
+          .single();
+        createdByUser = u;
+      }
+
+      if (task.assigned_by) {
+        const { data: u } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .eq('id', task.assigned_by)
+          .single();
+        assignedByUser = u;
+      }
+
+      return {
+        ...task,
+        created_by_user: createdByUser,
+        assigned_by_user: assignedByUser,
+      };
+    }));
+
+    res.json({ tasks: tasksWithUsers || [] });
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: err.message });
@@ -214,7 +244,7 @@ app.get('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { data, error } = await supabase
+    const { data: task, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('id', id)
@@ -222,7 +252,43 @@ app.get('/api/tasks/:id', async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ task: data });
+    // Get user details
+    let createdByUser = null;
+    let assignedByUser = null;
+
+    if (task.created_by) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', task.created_by)
+        .single();
+      createdByUser = user;
+    }
+
+    if (task.assigned_by) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', task.assigned_by)
+        .single();
+      assignedByUser = user;
+    }
+
+    // Get task updates
+    const { data: taskUpdates } = await supabase
+      .from('task_updates')
+      .select('*')
+      .eq('task_id', id)
+      .order('created_at', { ascending: false });
+
+    res.json({ 
+      task: {
+        ...task,
+        created_by_user: createdByUser,
+        assigned_by_user: assignedByUser,
+        task_updates: taskUpdates || [],
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(404).json({ error: 'Task not found' });
