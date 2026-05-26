@@ -300,15 +300,6 @@ app.put('/api/tasks/:id/progress', async (req, res) => {
     const { id } = req.params;
     const { completion_percentage, notes } = req.body;
 
-    // Auto-update status to in_progress when adding progress
-    const { data: taskData, error: taskError } = await supabase
-      .from('tasks')
-      .update({ status: 'in_progress' })
-      .eq('id', id)
-      .select();
-
-    if (taskError) throw taskError;
-
     const { data, error } = await supabase
       .from('task_updates')
       .insert([{
@@ -336,7 +327,7 @@ app.put('/api/tasks/:id/complete', async (req, res) => {
       .from('tasks')
       .update({ status: 'pending_verification' })
       .eq('id', id)
-      .or(`created_by.eq.${userId},assigned_to.eq.${userId}`)
+      .eq('created_by', userId)
       .select();
 
     if (error) throw error;
@@ -359,7 +350,7 @@ app.put('/api/tasks/:id/verify', async (req, res) => {
 
     const { data: task } = await supabase
       .from('tasks')
-      .select('assigned_by, created_by')
+      .select('assigned_by, created_by, assigned_to')
       .eq('id', id)
       .single();
 
@@ -403,15 +394,20 @@ app.put('/api/tasks/:id/verify', async (req, res) => {
 
     if (updateError) throw updateError;
 
+    // Award points to whoever DID the work:
+    // - If assigned_to is set → they did the work
+    // - If assigned_to is NULL → creator did the work
+    const pointsRecipient = task.assigned_to || task.created_by;
+
     // Add to points history
     await supabase.from('points_history').insert([{
-      employee_id: task.created_by,
+      employee_id: pointsRecipient,
       task_id: id,
       base_points,
       total_points: base_points,
     }]);
 
-    res.json({ task: updated[0], message: 'Task approved' });
+    res.json({ task: updated[0], message: 'Task approved', awardedTo: pointsRecipient });
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: err.message });
